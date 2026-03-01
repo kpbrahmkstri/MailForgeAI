@@ -1,0 +1,13 @@
+{
+  "default": {
+    "name": "John Doe",
+    "title": "Finance Manager",
+    "company": "FinBrief",
+    "signature": "Best,\nJohn",
+    "style_preferences": {
+      "length": "medium",
+      "format": "paragraph",
+      "cta_style": "direct"
+    }
+  }
+}
