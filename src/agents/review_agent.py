@@ -52,4 +52,7 @@ def review_node(state: Dict[str, Any]) -> Dict[str, Any]:
     trace = state.get("trace", [])
     trace.append(f"✅ Review: {review.verdict.upper()} (tone_score={review.tone_alignment_score:.2f})")
 
-    return {"trace": trace, "review": review.model_dump()}
+    review_history = state.get("review_history", [])
+    review_history.append({"attempt": state.get("retries", 0) + 1, **review.model_dump()})
+    
+    return {"trace": trace, "review": review.model_dump(), "review_history": review_history}

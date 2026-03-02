@@ -36,6 +36,9 @@ class EmailState(TypedDict, total=False):
     draft: Dict[str, Any]
     review: Dict[str, Any]
 
+    draft_history: List[Dict[str, Any]]
+    review_history: List[Dict[str, Any]]
+
     # Routing / final
     retries: int
     max_retries: int
@@ -109,6 +112,8 @@ def run_email_assistant(
         "metadata": metadata or {},
         "retries": 0,
         "max_retries": max_retries,
+        "draft_history": [],
+        "review_history": [],
         "trace": [],
     }
     return GRAPH.invoke(state)

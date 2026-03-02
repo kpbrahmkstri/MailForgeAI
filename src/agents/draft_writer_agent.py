@@ -10,6 +10,7 @@ from src.integrations.openai_client import get_llm
 
 class DraftEmail(BaseModel):
     subject: str
+    subject_options: List[str] = Field(default_factory=list)
     body: str
     assumptions_used: List[str] = Field(default_factory=list)
 
@@ -21,6 +22,7 @@ Write a complete email with:
 
 Rules:
 - Follow the tone_contract strictly.
+- Generate 3 subject options in subject_options, and set subject as the best one.
 - Use parsed_request and user_profile fields; do not invent facts.
 - If missing info exists, either (a) write with minimal assumptions or (b) phrase it as a question.
 - Keep it professional and easy to scan.
@@ -186,10 +188,20 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     attempt = state.get("retries", 0) + 1
     trace.append(f"✅ DraftWriter: produced draft (attempt {attempt})")
 
+    draft_history = state.get("draft_history", [])
+    draft_history.append({
+    "attempt": attempt,
+    "subject": draft.subject.strip(),
+    "subject_options": [s.strip() for s in (draft.subject_options or []) if s.strip()],
+    "body": body,
+})
+
     return {
         "trace": trace,
+        "draft_history": draft_history,
         "draft": {
             "subject": draft.subject.strip(),
+            "subject_options": [s.strip() for s in (draft.subject_options or []) if s.strip()],
             "body": body,
             "assumptions_used": draft.assumptions_used,
         },
