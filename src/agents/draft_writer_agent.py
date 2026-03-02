@@ -18,15 +18,17 @@ class DraftEmail(BaseModel):
 SYSTEM = """You are an expert email writer.
 Write a complete email with:
 - a strong subject line
+- 3 subject options (subject_options) and pick the best as subject
 - a clear body (greeting, context, ask, CTA, sign-off)
 
 Rules:
 - Follow the tone_contract strictly.
-- Generate 3 subject options in subject_options, and set subject as the best one.
 - Use parsed_request and user_profile fields; do not invent facts.
 - If missing info exists, either (a) write with minimal assumptions or (b) phrase it as a question.
 - Keep it professional and easy to scan.
 - If the user_profile provides a signature, use it. Do not add multiple sign-offs.
+- For follow_up intent: include an explicit CTA that asks for a concrete response (e.g., confirm receipt, provide feedback) and a timeframe if provided.
+- If recipient_name is unknown, address the email generically (e.g., "Hello," or "Hi there,") instead of using placeholders like [Recipient's Name].
 """
 
 
@@ -58,10 +60,6 @@ def _normalize_lines(text: str) -> List[str]:
 
 
 def _has_signoff_near_end(text: str, tail_lines: int = 12) -> bool:
-    """
-    Detect whether there is a closing line near the end of the draft.
-    Looks at the last N non-empty lines and checks against known closing patterns.
-    """
     lines = [ln.strip() for ln in _normalize_lines(text) if ln.strip()]
     tail = lines[-tail_lines:]
     for ln in tail:
@@ -73,49 +71,45 @@ def _has_signoff_near_end(text: str, tail_lines: int = 12) -> bool:
 
 
 def _find_placeholder_signoff_block(text: str) -> bool:
-    """
-    Detect placeholders like '[Your Name]' near the end.
-    """
     lower = text.lower()
     return any(re.search(pat, lower) for pat in _PLACEHOLDER_PATTERNS)
 
 
 def _remove_trailing_placeholder_block(text: str) -> str:
-    """
-    Remove obvious placeholder sign-off blocks at the very end, e.g.:
-    'Sincerely, [Your Name]' or similar 1-3 line endings.
-    """
     lines = _normalize_lines(text)
-    # Work on last ~6 lines only to avoid accidentally removing mid-body content
     prefix = lines[:-6]
     tail = lines[-6:]
-
-    # Join tail for pattern removal
     tail_text = "\n".join(tail)
 
-    # Remove common placeholder patterns if they appear in tail
-    # e.g., "Sincerely, [Your Name]" or "Best,\n[Your Name]"
     cleaned = tail_text
-    cleaned = re.sub(r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*\[your name\]\s*$", "", cleaned).strip()
-    cleaned = re.sub(r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\[your name\]\s*$", "", cleaned).strip()
+    cleaned = re.sub(
+        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*\[your name\]\s*$",
+        "",
+        cleaned,
+    ).strip()
+    cleaned = re.sub(
+        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\[your name\]\s*$",
+        "",
+        cleaned,
+    ).strip()
 
-    # Also remove generic "<Your Name>" endings
-    cleaned = re.sub(r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*<your name>\s*$", "", cleaned).strip()
-    cleaned = re.sub(r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*<your name>\s*$", "", cleaned).strip()
+    cleaned = re.sub(
+        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*<your name>\s*$",
+        "",
+        cleaned,
+    ).strip()
+    cleaned = re.sub(
+        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*<your name>\s*$",
+        "",
+        cleaned,
+    ).strip()
 
-    # Rebuild text
     rebuilt_tail = cleaned.strip()
     rebuilt_lines = prefix + ([rebuilt_tail] if rebuilt_tail else [])
     return "\n".join([ln for ln in rebuilt_lines if ln is not None]).strip()
 
 
 def _compose_signoff_block(tone_contract: Dict[str, Any], profile: Dict[str, Any]) -> str:
-    """
-    Build a single sign-off block. Priority:
-    1) profile.signature (if present)
-    2) tone_contract.signoff_style + profile.name (if name exists)
-    3) fallback "Regards," + profile.name (if name exists)
-    """
     profile_signature = (profile.get("signature") or "").strip()
     if profile_signature:
         return profile_signature
@@ -124,7 +118,6 @@ def _compose_signoff_block(tone_contract: Dict[str, Any], profile: Dict[str, Any
     name = (profile.get("name") or "").strip()
 
     if closing:
-        # Ensure it ends with a comma for nicer formatting (optional)
         if not closing.endswith(","):
             closing = closing + ","
         if name:
@@ -136,9 +129,6 @@ def _compose_signoff_block(tone_contract: Dict[str, Any], profile: Dict[str, Any
     return "Regards,"
 
 
-# --------------------------
-# Main agent node
-# --------------------------
 def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     llm = get_llm(temperature=0.4)
 
@@ -149,7 +139,6 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     style_prefs = profile.get("style_preferences") or {}
     metadata = state.get("metadata") or {}
 
-    # If we are retrying after review, include reviewer notes to improve draft
     review = state.get("review") or {}
     reviewer_notes = review.get("issues", [])
 
@@ -163,6 +152,7 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "style_preferences": style_prefs,
         "metadata": metadata,
         "reviewer_notes_to_fix_if_any": reviewer_notes,
+        "instruction": "Return 3 distinct subject options in subject_options and choose the best as subject.",
     }
 
     draft: DraftEmail = model.invoke(
@@ -174,12 +164,10 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     body = draft.body.strip()
 
-    # 1) If placeholders exist at the end, remove them (we will add our own correct signoff)
+    # Remove placeholder signoff, then append a single signoff only if missing
     if _find_placeholder_signoff_block(body):
         body = _remove_trailing_placeholder_block(body)
 
-    # 2) If draft already has a closing/signature near the end, do NOT append another.
-    #    This prevents duplicates like "Sincerely..." + "Best..."
     if not _has_signoff_near_end(body):
         signoff_block = _compose_signoff_block(tone_contract, profile)
         body = body.rstrip() + "\n\n" + signoff_block
@@ -188,20 +176,29 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     attempt = state.get("retries", 0) + 1
     trace.append(f"✅ DraftWriter: produced draft (attempt {attempt})")
 
+    subject_options = [s.strip() for s in (draft.subject_options or []) if s.strip()]
+    if draft.subject.strip() and draft.subject.strip() not in subject_options:
+        subject_options = [draft.subject.strip()] + subject_options
+    subject_options = subject_options[:3]  # keep it tidy
+
+    # Save history
     draft_history = state.get("draft_history", [])
-    draft_history.append({
-    "attempt": attempt,
-    "subject": draft.subject.strip(),
-    "subject_options": [s.strip() for s in (draft.subject_options or []) if s.strip()],
-    "body": body,
-})
+    draft_history.append(
+        {
+            "attempt": attempt,
+            "subject": draft.subject.strip(),
+            "subject_options": subject_options,
+            "body": body,
+            "assumptions_used": draft.assumptions_used,
+        }
+    )
 
     return {
         "trace": trace,
         "draft_history": draft_history,
         "draft": {
             "subject": draft.subject.strip(),
-            "subject_options": [s.strip() for s in (draft.subject_options or []) if s.strip()],
+            "subject_options": subject_options,
             "body": body,
             "assumptions_used": draft.assumptions_used,
         },

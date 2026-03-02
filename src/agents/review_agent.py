@@ -14,11 +14,22 @@ class ReviewResult(BaseModel):
     structure_ok: bool
 
 
-SYSTEM = """You are a strict email reviewer.
+SYSTEM = """You are a strict but fair email reviewer.
+
 Evaluate the draft for:
 1) Tone adherence to tone_contract
-2) Structure: greeting/context/ask/CTA/sign-off
+2) Structure: greeting/context/body/sign-off (CTA depends on intent)
 3) Unfounded claims (anything not supported by parsed_request or metadata)
+
+Intent-specific rules:
+- follow_up / meeting_request / outreach / escalation: MUST include a clear CTA (what you want + timeframe if available).
+- thank_you: CTA is OPTIONAL. A soft closing like 'Happy to help if you need anything' is fine.
+- status_update: CTA optional unless user explicitly asked for an action.
+
+Tone rules:
+- Do NOT flag professional gratitude phrases (e.g., 'sincere gratitude') as casual.
+- Only flag tone issues when they clearly contradict the tone_contract (e.g., slang in formal tone).
+
 If issues exist, provide clear bullet issues and set verdict=fail.
 """
 
@@ -48,11 +59,12 @@ def review_node(state: Dict[str, Any]) -> Dict[str, Any]:
             ("user", f"Review this email draft:\n{payload}"),
         ]
     )
+    attempt = state.get("retries", 0) + 1
 
     trace = state.get("trace", [])
     trace.append(f"✅ Review: {review.verdict.upper()} (tone_score={review.tone_alignment_score:.2f})")
 
     review_history = state.get("review_history", [])
-    review_history.append({"attempt": state.get("retries", 0) + 1, **review.model_dump()})
-    
+    review_history.append({"attempt": attempt, **review.model_dump()})
+
     return {"trace": trace, "review": review.model_dump(), "review_history": review_history}
