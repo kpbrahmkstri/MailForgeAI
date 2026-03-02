@@ -8,6 +8,7 @@ from typing import Dict, Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.workflow.langgraph_flow import run_email_assistant
+from src.memory.memory_store import update_profile_from_edits
 
 
 st.set_page_config(page_title="MailForge AI", layout="wide")
@@ -100,7 +101,8 @@ if generate and user_prompt.strip():
             user_id="default",
             max_retries=1,
         )
-
+        
+    edited_output = ""  # ✅ define default to avoid NameError
     # If router asked for clarification
     if state.get("router", {}).get("next_step") == "ask_user":
         st.warning("⚠️ Clarification Needed")
@@ -110,12 +112,32 @@ if generate and user_prompt.strip():
 
         final_output = state.get("final_output", "")
         edited_output = st.text_area(
-            "Edit before sending:",
-            value=final_output,
-            height=300,
+    "Edit before sending:",
+    value=final_output,
+    height=300,
+    )
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button("💾 Save my edits (learn my style)"):
+            new_profile = update_profile_from_edits(
+                user_id="default",
+                generated=final_output,
+                edited=edited_output,
+            )
+            st.success("Saved! Next drafts will better match your style.")
+            st.caption(f"Learned prefs: {new_profile.get('style_preferences')}")
+
+    with c2:
+        st.download_button(
+            label="⬇️ Download as .txt",
+            data=edited_output,
+            file_name="mailforge_email.txt",
+            mime="text/plain",
         )
 
-        st.button("📋 Copy (manual select & copy)")
+    st.caption("Tip: select text and copy manually, or download as .txt.")
 
     st.markdown("---")
 
