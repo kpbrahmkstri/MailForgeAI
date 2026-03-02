@@ -19,6 +19,13 @@ class ToneContract(BaseModel):
 
 SYSTEM = """You are a tone stylist. Convert tone_mode into a concrete writing contract.
 Be specific and actionable (greeting, sentence style, CTA, sign-off).
+
+IMPORTANT:
+- For intent='thank_you', "formal" should still feel warm and appreciative, but professional.
+  That means: no slang/emojis, but gratitude language IS encouraged.
+- Do not output placeholders like [Your Name]. signoff_style should be only a closing phrase like "Sincerely," or "Regards,".
+
+Output a contract that helps an email writer comply.
 """
 
 
