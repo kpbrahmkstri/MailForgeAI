@@ -151,6 +151,12 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "user_profile": profile,
         "style_preferences": style_prefs,
         "metadata": metadata,
+        "retrieved_templates": state.get("retrieved_templates", []),
+        "instruction": (
+        "Use the retrieved_templates as the primary structure. "
+        "Choose the best matching template and adapt it. "
+        "Do not copy placeholders literally; fill using parsed_request/metadata or ask questions naturally."
+        ),
         "reviewer_notes_to_fix_if_any": reviewer_notes,
         "instruction": "Return 3 distinct subject options in subject_options and choose the best as subject.",
     }

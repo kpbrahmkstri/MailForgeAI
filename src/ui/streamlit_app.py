@@ -136,6 +136,19 @@ if generate and user_prompt.strip():
 state = st.session_state.get("last_state")
 
 if state:
+    with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
+        templates = state.get("retrieved_templates", [])
+        if not templates:
+            st.write("No templates retrieved.")
+        else:
+            for t in templates:
+                st.write(f"**{t.get('source')}**")
+                st.code((t.get("content", "") or "")[:800])
+else:
+    with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
+        st.write("Run a prompt to retrieve templates.")
+
+if state:
     st.markdown("---")
 
     # Clarification loop (Option A)

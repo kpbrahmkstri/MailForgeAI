@@ -12,6 +12,7 @@ from src.agents.personalization_agent import personalization_node
 from src.agents.draft_writer_agent import draft_writer_node
 from src.agents.review_agent import review_node
 from src.agents.router_agent import router_node
+from src.agents.retrieval_agent import retrieval_node
 
 
 class EmailState(TypedDict, total=False):
@@ -28,6 +29,8 @@ class EmailState(TypedDict, total=False):
     parsed_request: Dict[str, Any]
     missing_info: List[str]
     assumptions: List[str]
+
+    retrieved_templates: List[Dict[str, Any]]
 
     intent: Dict[str, Any]
     tone_contract: Dict[str, Any]
@@ -63,12 +66,14 @@ def build_graph():
     g.add_node("draft_writer", draft_writer_node)
     g.add_node("review", review_node)
     g.add_node("router", router_node)
+    g.add_node("retrieval", retrieval_node)
 
     # Linear pipeline
     g.set_entry_point("input_parser")
     g.add_edge("input_parser", "intent_detection")
     g.add_edge("intent_detection", "tone_stylist")
-    g.add_edge("tone_stylist", "personalization")
+    g.add_edge("tone_stylist", "retrieval")
+    g.add_edge("retrieval", "personalization") 
     g.add_edge("personalization", "draft_writer")
     g.add_edge("draft_writer", "review")
     g.add_edge("review", "router")
