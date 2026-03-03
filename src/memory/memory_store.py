@@ -1,19 +1,22 @@
 import json
-import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
+from src.utils.path_utils import get_user_profiles_path
 
-MEMORY_PATH = os.path.join(os.path.dirname(__file__), "user_profiles.json")
+
+MEMORY_PATH = get_user_profiles_path()
 
 
 def load_profiles() -> Dict[str, Any]:
-    if not os.path.exists(MEMORY_PATH):
+    if not MEMORY_PATH.exists():
         return {}
     with open(MEMORY_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_profiles(profiles: Dict[str, Any]) -> None:
+    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(MEMORY_PATH, "w", encoding="utf-8") as f:
         json.dump(profiles, f, indent=2, ensure_ascii=False)
 

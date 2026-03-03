@@ -1,11 +1,24 @@
+# Core Framework
 streamlit>=1.33.0
 python-dotenv>=1.0.1
 pydantic>=2.7.0
+
+# LangGraph & LangChain
 langgraph>=0.2.0
 langchain>=0.2.0
 langchain-openai>=0.1.0
-openai>=1.30.0
-python-dotenv
-chromadb>=0.5.0
 langchain-community>=0.2.0
+openai>=1.30.0
+
+# Vector Storage & RAG
+chromadb>=0.5.0
+
+# Testing
 pytest>=8.0.0
+
+# Optional but useful
+pillow>=10.0.0  # For diagram generation
+requests>=2.31.0  # For API calls
+
+# Path handling (pathlib comes with Python 3.7+)
+# No additional package needed, but included here for clarity

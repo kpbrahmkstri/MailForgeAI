@@ -7,6 +7,7 @@ Supports both Mermaid diagram output and ASCII visualization.
 import json
 from pathlib import Path
 from src.workflow.langgraph_flow import GRAPH
+from src.utils.path_utils import get_output_dir
 
 
 def get_graph_mermaid() -> str:
@@ -146,8 +147,13 @@ def print_workflow_summary():
     print("\n" + "="*70 + "\n")
 
 
-def save_mermaid_diagram(output_path: str = "workflow_diagram.md"):
+def save_mermaid_diagram(output_path: str = None) -> Path:
     """Save the Mermaid diagram to a markdown file."""
+    if output_path is None:
+        output_path = get_output_dir() / "workflow_diagram.md"
+    else:
+        output_path = Path(output_path)
+    
     mermaid_content = get_graph_mermaid()
     
     markdown_content = """# MailForgeAI Workflow Diagram
@@ -238,15 +244,22 @@ print(result["final_output"])
     with open(output_path, "w") as f:
         f.write(markdown_content)
     print(f"✅ Mermaid diagram saved to: {output_path}")
+    return output_path
 
 
-def save_graph_json(output_path: str = "workflow_structure.json"):
+def save_graph_json(output_path: str = None) -> Path:
     """Save the graph structure as JSON."""
+    if output_path is None:
+        output_path = get_output_dir() / "workflow_structure.json"
+    else:
+        output_path = Path(output_path)
+    
     structure = get_graph_structure()
     
     with open(output_path, "w") as f:
         json.dump(structure, f, indent=2)
     print(f"✅ Graph structure saved to: {output_path}")
+    return output_path
 
 
 def export_graph_ascii():
@@ -342,12 +355,12 @@ def main():
     print_workflow_summary()
     
     # Save outputs
-    save_mermaid_diagram("workflow_diagram.md")
-    save_graph_json("workflow_structure.json")
+    md_path = save_mermaid_diagram()
+    json_path = save_graph_json()
     
     print("\n📁 Output files generated:")
-    print("   • workflow_diagram.md (Mermaid visualization)")
-    print("   • workflow_structure.json (JSON structure)")
+    print(f"   • {md_path.name} (Mermaid visualization)")
+    print(f"   • {json_path.name} (JSON structure)")
     print("\nYou can view the Mermaid diagram in VS Code or on mermaid.live")
 
 

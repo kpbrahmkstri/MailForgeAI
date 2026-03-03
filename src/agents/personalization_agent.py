@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-import os
+from pathlib import Path
 from typing import Any, Dict
 from src.memory.memory_store import get_profile
-
-PROFILE_PATH = os.path.join(os.path.dirname(__file__), "..", "memory", "user_profiles.json")
+from src.utils.path_utils import get_user_profiles_path
 
 
 def _load_profiles() -> Dict[str, Any]:
     try:
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+        with open(get_user_profiles_path(), "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
         return {}

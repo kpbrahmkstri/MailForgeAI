@@ -4,8 +4,9 @@ Generate PNG workflow diagram directly using Pillow (PIL).
 No external dependencies beyond what's likely already installed.
 """
 
-import os
 import sys
+from pathlib import Path
+from src.utils.path_utils import get_output_dir
 
 
 def generate_png_with_pillow():
@@ -159,7 +160,8 @@ def generate_png_with_pillow():
         draw.text((50, info_y + i * 25), line, font=small_font, fill=dark_text, anchor="lm")
     
     # Save image
-    output_file = "workflow_diagram.png"
+    output_dir = get_output_dir()
+    output_file = output_dir / "workflow_diagram.png"
     img.save(output_file, "PNG", quality=95)
     return output_file
 
@@ -172,8 +174,8 @@ def main():
     
     try:
         output_file = generate_png_with_pillow()
-        if output_file and os.path.exists(output_file):
-            size = os.path.getsize(output_file) / 1024
+        if output_file and output_file.exists():
+            size = output_file.stat().st_size / 1024
             print(f"✅ Successfully created: {output_file}")
             print(f"📊 Image size: 1200x1400 pixels")
             print(f"📁 File size: {size:.1f} KB")

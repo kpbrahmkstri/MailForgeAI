@@ -1,25 +1,24 @@
-import os
+from pathlib import Path
 from typing import List, Dict, Any
 
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 
+from src.utils.path_utils import get_templates_dir, get_chroma_dir
 
-TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "kb", "templates")
-CHROMA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chroma_templates")
+
+TEMPLATE_DIR = get_templates_dir()
+CHROMA_DIR = get_chroma_dir()
 
 
 def _load_template_docs() -> List[Document]:
     docs: List[Document] = []
-    if not os.path.isdir(TEMPLATE_DIR):
+    if not TEMPLATE_DIR.is_dir():
         return docs
 
-    for fname in os.listdir(TEMPLATE_DIR):
-        if not fname.endswith(".md"):
-            continue
-        path = os.path.join(TEMPLATE_DIR, fname)
-        with open(path, "r", encoding="utf-8") as f:
+    for fpath in TEMPLATE_DIR.glob("*.md"):
+        with open(fpath, "r", encoding="utf-8") as f:
             text = f.read()
 
         # Store metadata for UI + filtering
@@ -27,8 +26,8 @@ def _load_template_docs() -> List[Document]:
             Document(
                 page_content=text,
                 metadata={
-                    "source": fname,
-                    "path": path,
+                    "source": fpath.name,
+                    "path": str(fpath),
                 },
             )
         )
@@ -42,14 +41,14 @@ def get_template_retriever():
     embeddings = OpenAIEmbeddings()  # uses OPENAI_API_KEY env var
 
     # Create index if missing
-    if not os.path.exists(CHROMA_DIR) or not os.listdir(CHROMA_DIR):
+    if not CHROMA_DIR.exists() or not list(CHROMA_DIR.iterdir()):
         docs = _load_template_docs()
         if not docs:
             raise RuntimeError(f"No templates found in {TEMPLATE_DIR}")
         vs = Chroma.from_documents(
             docs,
-            embedding=embeddings,
-            persist_directory=CHROMA_DIR,
+            embeddings,
+            persist_directory=str(CHROMA_DIR),
             collection_name="mailforge_templates",
         )
         vs.persist()
@@ -57,7 +56,7 @@ def get_template_retriever():
 
     # Load existing
     vs = Chroma(
-        persist_directory=CHROMA_DIR,
+        persist_directory=str(CHROMA_DIR),
         embedding_function=embeddings,
         collection_name="mailforge_templates",
     )

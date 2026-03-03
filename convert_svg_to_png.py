@@ -4,15 +4,19 @@ Convert SVG workflow diagram to PNG using cairosvg or alternative methods.
 """
 
 import subprocess
-import os
 import sys
+from pathlib import Path
+from src.utils.path_utils import get_output_dir
 
 
 def convert_svg_to_png_cairosvg():
     """Convert SVG to PNG using cairosvg."""
+    output_dir = get_output_dir()
+    svg_file = output_dir / "workflow_diagram_svg.svg"
+    png_file = output_dir / "workflow_diagram.png"
     try:
         import cairosvg
-        cairosvg.svg2png(url="workflow_diagram_svg.svg", write_to="workflow_diagram.png")
+        cairosvg.svg2png(url=str(svg_file), write_to=str(png_file))
         return True
     except ImportError:
         return False
@@ -23,6 +27,9 @@ def convert_svg_to_png_cairosvg():
 
 def convert_svg_to_png_pillow():
     """Convert SVG to PNG using PIL and wand."""
+    output_dir = get_output_dir()
+    svg_file = output_dir / "workflow_diagram_svg.svg"
+    png_file = output_dir / "workflow_diagram.png"
     try:
         from PIL import Image
         from io import BytesIO
@@ -30,9 +37,9 @@ def convert_svg_to_png_pillow():
         # Try using wand (ImageMagick Python wrapper)
         try:
             from wand.image import Image as WandImage
-            with WandImage(filename="workflow_diagram_svg.svg", format="svg") as img:
+            with WandImage(filename=str(svg_file), format="svg") as img:
                 img.format = "png"
-                img.save(filename="workflow_diagram.png")
+                img.save(filename=str(png_file))
             return True
         except ImportError:
             pass
@@ -58,9 +65,12 @@ def convert_svg_to_png_batik():
 
 def convert_svg_to_png_inkscape():
     """Convert SVG to PNG using Inkscape."""
+    output_dir = get_output_dir()
+    svg_file = output_dir / "workflow_diagram_svg.svg"
+    png_file = output_dir / "workflow_diagram.png"
     try:
         result = subprocess.run(
-            ["inkscape", "--export-type=png", "workflow_diagram_svg.svg", "-o", "workflow_diagram.png"],
+            ["inkscape", "--export-type=png", str(svg_file), "-o", str(png_file)],
             capture_output=True,
             text=True,
             timeout=30
@@ -70,7 +80,7 @@ def convert_svg_to_png_inkscape():
         
         # Try old syntax
         result = subprocess.run(
-            ["inkscape", "-z", "-e", "workflow_diagram.png", "workflow_diagram_svg.svg"],
+            ["inkscape", "-z", "-e", str(png_file), str(svg_file)],
             capture_output=True,
             text=True,
             timeout=30
@@ -85,9 +95,12 @@ def convert_svg_to_png_inkscape():
 
 def convert_svg_to_png_imagemagick():
     """Convert SVG to PNG using ImageMagick."""
+    output_dir = get_output_dir()
+    svg_file = output_dir / "workflow_diagram_svg.svg"
+    png_file = output_dir / "workflow_diagram.png"
     try:
         result = subprocess.run(
-            ["convert", "workflow_diagram_svg.svg", "workflow_diagram.png"],
+            ["convert", str(svg_file), str(png_file)],
             capture_output=True,
             text=True,
             timeout=30
@@ -102,6 +115,9 @@ def convert_svg_to_png_imagemagick():
 
 def generate_png_from_mermaid():
     """Generate PNG directly from Mermaid using various methods."""
+    output_dir = get_output_dir()
+    png_file = output_dir / "workflow_diagram.png"
+    
     methods = [
         ("cairosvg", convert_svg_to_png_cairosvg),
         ("Inkscape", convert_svg_to_png_inkscape),
@@ -116,10 +132,10 @@ def generate_png_from_mermaid():
     for name, method in methods:
         print(f"Attempting {name}...", end=" ")
         if method():
-            if os.path.exists("workflow_diagram.png"):
-                size = os.path.getsize("workflow_diagram.png") / 1024
+            if png_file.exists():
+                size = png_file.stat().st_size / 1024
                 print(f"✅ Success!")
-                print(f"✅ Created: workflow_diagram.png ({size:.1f} KB)")
+                print(f"✅ Created: {png_file} ({size:.1f} KB)")
                 return True
         print("❌ Not available")
     
@@ -142,9 +158,12 @@ def install_cairosvg():
 
 def main():
     """Main execution."""
+    output_dir = get_output_dir()
+    svg_file = output_dir / "workflow_diagram_svg.svg"
+    
     # Check if SVG exists
-    if not os.path.exists("workflow_diagram_svg.svg"):
-        print("❌ SVG file not found. Run generate_png_diagram.py first.")
+    if not svg_file.exists():
+        print(f"\u274c SVG file not found at {svg_file}. Run generate_png_diagram.py first.")
         sys.exit(1)
     
     # Try existing methods
@@ -156,22 +175,24 @@ def main():
     if install_cairosvg():
         print("Retrying PNG conversion with cairosvg...")
         if convert_svg_to_png_cairosvg():
-            size = os.path.getsize("workflow_diagram.png") / 1024
-            print(f"✅ Successfully created: workflow_diagram.png ({size:.1f} KB)")
-            return
+            png_file = output_dir / "workflow_diagram.png"
+            if png_file.exists():
+                size = png_file.stat().st_size / 1024
+                print(f"✅ Successfully created: {png_file} ({size:.1f} KB)")
+                return
     
     # Final fallback
     print("\n" + "="*70)
     print("⚠️  Could not convert SVG to PNG automatically")
     print("="*70)
-    print("\nHowever, your SVG file is ready: workflow_diagram_svg.svg")
+    print("\nHowever, your SVG file is ready: {}".format(svg_file))
     print("\nOptions to convert SVG to PNG:")
     print("\n1. Online Converter (No installation needed):")
     print("   Visit: https://cloudconvert.com/svg-to-png")
-    print("   Upload: workflow_diagram_svg.svg")
+    print(f"   Upload: {svg_file}")
     print("\n2. Install ImageMagick:")
     print("   Windows: choco install imagemagick")
-    print("   Then: convert workflow_diagram_svg.svg workflow_diagram.png")
+    print(f"   Then: convert {svg_file} {{svg_file.parent / 'workflow_diagram.png'}}")
     print("\n3. Install Inkscape:")
     print("   Windows: choco install inkscape")
     print("   Then: inkscape --export-type=png workflow_diagram_svg.svg")
