@@ -1,0 +1,21 @@
+graph TD
+    A["<b>INPUT PARSER</b><br/>Parse user prompt<br/>Extract intent hints"] --> B["<b>INTENT DETECTION</b><br/>Classify email type<br/>Analyze intent"]
+    B --> C["<b>TONE STYLIST</b><br/>Determine tone<br/>Set writing style"]
+    C --> D["<b>RETRIEVAL</b><br/>Fetch templates<br/>Get knowledge base"]
+    D --> E["<b>PERSONALIZATION</b><br/>Add context<br/>User profile data"]
+    E --> F["<b>DRAFT WRITER</b><br/>Generate email<br/>Create content"]
+    F --> G["<b>REVIEW</b><br/>Check quality<br/>Validate output"]
+    G --> H["<b>ROUTER</b><br/>Decision logic<br/>Route next step"]
+    H -->|revise| F
+    H -->|ask_user| END["<b>END</b><br/>Return to user"]
+    H -->|final| END
+    
+    style A fill:#e1f5ff
+    style B fill:#e1f5ff
+    style C fill:#fff3e0
+    style D fill:#f3e5f5
+    style E fill:#e8f5e9
+    style F fill:#fff3e0
+    style G fill:#fce4ec
+    style H fill:#f1f8e9
+    style END fill:#c8e6c9

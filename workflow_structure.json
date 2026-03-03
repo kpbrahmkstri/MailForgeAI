@@ -1,0 +1,118 @@
+{
+  "entry_point": "input_parser",
+  "nodes": [
+    {
+      "id": "input_parser",
+      "name": "Input Parser",
+      "description": "Parse user prompt and extract intent hints",
+      "type": "agent"
+    },
+    {
+      "id": "intent_detection",
+      "name": "Intent Detection",
+      "description": "Classify email type and analyze intent",
+      "type": "agent"
+    },
+    {
+      "id": "tone_stylist",
+      "name": "Tone Stylist",
+      "description": "Determine tone and set writing style",
+      "type": "agent"
+    },
+    {
+      "id": "retrieval",
+      "name": "Retrieval",
+      "description": "Fetch templates and get knowledge base",
+      "type": "agent"
+    },
+    {
+      "id": "personalization",
+      "name": "Personalization",
+      "description": "Add context and user profile data",
+      "type": "agent"
+    },
+    {
+      "id": "draft_writer",
+      "name": "Draft Writer",
+      "description": "Generate email and create content",
+      "type": "agent"
+    },
+    {
+      "id": "review",
+      "name": "Review",
+      "description": "Check quality and validate output",
+      "type": "agent"
+    },
+    {
+      "id": "router",
+      "name": "Router",
+      "description": "Decision logic to route next step",
+      "type": "router"
+    }
+  ],
+  "edges": [
+    {
+      "from": "input_parser",
+      "to": "intent_detection",
+      "label": "default"
+    },
+    {
+      "from": "intent_detection",
+      "to": "tone_stylist",
+      "label": "default"
+    },
+    {
+      "from": "tone_stylist",
+      "to": "retrieval",
+      "label": "default"
+    },
+    {
+      "from": "retrieval",
+      "to": "personalization",
+      "label": "default"
+    },
+    {
+      "from": "personalization",
+      "to": "draft_writer",
+      "label": "default"
+    },
+    {
+      "from": "draft_writer",
+      "to": "review",
+      "label": "default"
+    },
+    {
+      "from": "review",
+      "to": "router",
+      "label": "default"
+    },
+    {
+      "from": "router",
+      "to": "draft_writer",
+      "label": "revise"
+    },
+    {
+      "from": "router",
+      "to": "END",
+      "label": "ask_user or final"
+    }
+  ],
+  "conditional_routing": {
+    "router": {
+      "decisions": [
+        {
+          "decision": "revise",
+          "target": "draft_writer"
+        },
+        {
+          "decision": "ask_user",
+          "target": "END"
+        },
+        {
+          "decision": "final",
+          "target": "END"
+        }
+      ]
+    }
+  }
+}
