@@ -1,11 +1,17 @@
 from pathlib import Path
 from typing import List, Dict, Any
+import os
 
+from dotenv import load_dotenv
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 
 from src.utils.path_utils import get_templates_dir, get_chroma_dir
+
+# Ensure OPENAI_API_KEY is available (for local .env files)
+if not os.getenv("OPENAI_API_KEY"):
+    load_dotenv(override=False)
 
 
 TEMPLATE_DIR = get_templates_dir()

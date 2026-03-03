@@ -10,11 +10,16 @@ from langchain_openai import ChatOpenAI
 def get_llm(model: Optional[str] = None, temperature: float = 0.3) -> ChatOpenAI:
     """
     Centralized LLM factory.
-    Loads .env so OPENAI_API_KEY is available on Windows without manual exporting.
+    Works with environment variables (HF Spaces) and .env files (local development).
     """
-    load_dotenv(override=False)
-
+    # First check environment variable (HF Spaces sets this directly)
     api_key = os.getenv("OPENAI_API_KEY")
+    
+    # If not found in environment, try loading from .env file (local development)
+    if not api_key:
+        load_dotenv(override=False)
+        api_key = os.getenv("OPENAI_API_KEY")
+    
     if not api_key:
         raise RuntimeError(
             "OPENAI_API_KEY not found. Add it to a .env file at project root or set it as an environment variable."
