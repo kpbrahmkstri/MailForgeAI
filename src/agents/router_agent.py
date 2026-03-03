@@ -12,7 +12,6 @@ class RouterDecision(BaseModel):
 
 
 def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
-    # --- Pull state ---
     parsed = state.get("parsed_request") or {}
     intent_obj = state.get("intent") or {}
     intent = (intent_obj.get("intent") or "").strip()
@@ -24,11 +23,11 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
     retries = state.get("retries", 0)
     max_retries = state.get("max_retries", 1)
 
-    # --- Critical fields we should not placeholder for certain intents ---
-    recipient_name = (parsed.get("recipient_name") or "").strip()
-    # Recipient name is critical only for these intents
-    critical_intents = {"follow_up", "outreach", "meeting_request", "escalation"}
+    trace = state.get("trace", [])
 
+    # 1) Critical recipient name for certain intents
+    recipient_name = (parsed.get("recipient_name") or "").strip()
+    critical_intents = {"follow_up", "outreach", "meeting_request", "escalation"}
     if intent in critical_intents and not recipient_name:
         decision = RouterDecision(
             next_step="ask_user",
@@ -38,7 +37,6 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 "Example: 'Kinjal; please review and reply by Friday.'"
             ),
         )
-        trace = state.get("trace", [])
         trace.append(f"✅ Router: next_step={decision.next_step} (critical missing recipient_name)")
         return {
             "trace": trace,
@@ -48,14 +46,13 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "retries": retries,
         }
 
-    # --- Generic missing info threshold ---
+    # 2) Too much missing info
     if len(missing) >= 3:
         decision = RouterDecision(
             next_step="ask_user",
             reason="Too much critical information is missing to draft confidently.",
             clarification_question=f"I can draft this, but I’m missing: {', '.join(missing)}. What should I use?",
         )
-        trace = state.get("trace", [])
         trace.append(f"✅ Router: next_step={decision.next_step} (missing_info >= 3)")
         return {
             "trace": trace,
@@ -65,14 +62,13 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "retries": retries,
         }
 
-    # --- Retry on review failure if we still have retries left ---
+    # 3) Retry if fail and retries remaining
     if verdict == "fail" and retries < max_retries:
         decision = RouterDecision(
             next_step="revise",
             reason="Draft failed review; retrying with reviewer feedback.",
         )
         state["retries"] = retries + 1
-        trace = state.get("trace", [])
         trace.append(f"✅ Router: next_step={decision.next_step} (retries={state['retries']}/{max_retries})")
         return {
             "trace": trace,
@@ -82,12 +78,11 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "retries": state["retries"],
         }
 
-    # --- Step 6.2: If still FAIL after retries, ask user instead of finalizing a failed draft ---
+    # 4) If still failing after retries, ask user (intent-aware question)
     if verdict == "fail":
         issues = review.get("issues", [])
         issue_text = "; ".join(issues[:3]) if issues else "quality checks failed"
 
-        # Intent-aware clarification prompt
         if intent == "thank_you":
             clarification = (
                 "One quick detail can make this thank-you email more personal:\n"
@@ -106,7 +101,6 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
             reason="Draft still failing validation after retries.",
             clarification_question=clarification,
         )
-        trace = state.get("trace", [])
         trace.append(f"✅ Router: next_step={decision.next_step} (fail after retries)")
         return {
             "trace": trace,
@@ -115,3 +109,25 @@ def router_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "final_output": None,
             "retries": retries,
         }
+
+    # 5) Finalize (PASS only)
+    draft = state.get("draft") or {}
+    subject = (draft.get("subject") or "").strip()
+    body = (draft.get("body") or "").strip()
+
+    final = ""
+    if subject:
+        final += f"Subject: {subject}\n\n"
+    final += body
+
+    decision = RouterDecision(next_step="final", reason="Draft is ready to deliver.")
+    state["final_output"] = final
+
+    trace.append(f"✅ Router: next_step={decision.next_step} (retries={retries}/{max_retries})")
+    return {
+        "trace": trace,
+        "router": decision.model_dump(),
+        "clarification_question": None,
+        "final_output": state.get("final_output"),
+        "retries": retries,
+    }

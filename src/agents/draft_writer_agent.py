@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
 from src.integrations.openai_client import get_llm
+from src.utils.email_postprocess import enforce_single_signoff
 
 
 class DraftEmail(BaseModel):
@@ -24,6 +24,7 @@ Write a complete email with:
 Rules:
 - Follow the tone_contract strictly.
 - Use parsed_request and user_profile fields; do not invent facts.
+- Use retrieved_templates as the primary structure when provided.
 - If missing info exists, either (a) write with minimal assumptions or (b) phrase it as a question.
 - Keep it professional and easy to scan.
 - If the user_profile provides a signature, use it. Do not add multiple sign-offs.
@@ -32,113 +33,20 @@ Rules:
 """
 
 
-# --------------------------
-# Sign-off utilities
-# --------------------------
-_CLOSING_PATTERNS = [
-    r"^sincerely[,]?$",
-    r"^best[,]?$",
-    r"^best regards[,]?$",
-    r"^regards[,]?$",
-    r"^kind regards[,]?$",
-    r"^warm regards[,]?$",
-    r"^thanks[,]?$",
-    r"^thank you[,]?$",
-    r"^cordially[,]?$",
-]
-
-_PLACEHOLDER_PATTERNS = [
-    r"\[your name\]",
-    r"<your name>",
-    r"\[name\]",
-    r"\{your name\}",
-]
-
-
-def _normalize_lines(text: str) -> List[str]:
-    return [ln.rstrip() for ln in text.strip().splitlines()]
-
-
-def _has_signoff_near_end(text: str, tail_lines: int = 12) -> bool:
-    lines = [ln.strip() for ln in _normalize_lines(text) if ln.strip()]
-    tail = lines[-tail_lines:]
-    for ln in tail:
-        l = ln.strip().lower()
-        for pat in _CLOSING_PATTERNS:
-            if re.match(pat, l):
-                return True
-    return False
-
-
-def _find_placeholder_signoff_block(text: str) -> bool:
-    lower = text.lower()
-    return any(re.search(pat, lower) for pat in _PLACEHOLDER_PATTERNS)
-
-
-def _remove_trailing_placeholder_block(text: str) -> str:
-    lines = _normalize_lines(text)
-    prefix = lines[:-6]
-    tail = lines[-6:]
-    tail_text = "\n".join(tail)
-
-    cleaned = tail_text
-    cleaned = re.sub(
-        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*\[your name\]\s*$",
-        "",
-        cleaned,
-    ).strip()
-    cleaned = re.sub(
-        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\[your name\]\s*$",
-        "",
-        cleaned,
-    ).strip()
-
-    cleaned = re.sub(
-        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*\n?\s*<your name>\s*$",
-        "",
-        cleaned,
-    ).strip()
-    cleaned = re.sub(
-        r"(?is)\n?\s*(sincerely|best|best regards|regards|kind regards|warm regards|thanks|thank you)[,]?\s*<your name>\s*$",
-        "",
-        cleaned,
-    ).strip()
-
-    rebuilt_tail = cleaned.strip()
-    rebuilt_lines = prefix + ([rebuilt_tail] if rebuilt_tail else [])
-    return "\n".join([ln for ln in rebuilt_lines if ln is not None]).strip()
-
-
-def _compose_signoff_block(tone_contract: Dict[str, Any], profile: Dict[str, Any]) -> str:
-    profile_signature = (profile.get("signature") or "").strip()
-    if profile_signature:
-        return profile_signature
-
-    closing = (tone_contract.get("signoff_style") or "").strip()
-    name = (profile.get("name") or "").strip()
-
-    if closing:
-        if not closing.endswith(","):
-            closing = closing + ","
-        if name:
-            return f"{closing}\n{name}"
-        return closing
-
-    if name:
-        return f"Regards,\n{name}"
-    return "Regards,"
-
-
 def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
     llm = get_llm(temperature=0.4)
 
     parsed = state.get("parsed_request") or {}
-    intent = state.get("intent") or {}
+    intent_obj = state.get("intent") or {}
     tone_contract = state.get("tone_contract") or {}
     profile = state.get("user_profile") or {}
     style_prefs = profile.get("style_preferences") or {}
     metadata = state.get("metadata") or {}
 
+    # RAG
+    retrieved_templates = state.get("retrieved_templates", []) or []
+
+    # If we are retrying after review, include reviewer notes to improve draft
     review = state.get("review") or {}
     reviewer_notes = review.get("issues", [])
 
@@ -146,19 +54,21 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
     prompt = {
         "parsed_request": parsed,
-        "intent": intent,
+        "intent": intent_obj,
         "tone_contract": tone_contract,
         "user_profile": profile,
         "style_preferences": style_prefs,
         "metadata": metadata,
-        "retrieved_templates": state.get("retrieved_templates", []),
-        "instruction": (
-        "Use the retrieved_templates as the primary structure. "
-        "Choose the best matching template and adapt it. "
-        "Do not copy placeholders literally; fill using parsed_request/metadata or ask questions naturally."
+        "retrieved_templates": retrieved_templates,
+        "rag_instruction": (
+            "Use the retrieved_templates as the primary structure. "
+            "Pick the single best matching template and adapt it. "
+            "Do not copy placeholders literally; fill using parsed_request/metadata or ask questions naturally."
+        ),
+        "subject_instruction": (
+            "Return 3 distinct subject options in subject_options and choose the best as subject."
         ),
         "reviewer_notes_to_fix_if_any": reviewer_notes,
-        "instruction": "Return 3 distinct subject options in subject_options and choose the best as subject.",
     }
 
     draft: DraftEmail = model.invoke(
@@ -168,31 +78,26 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         ]
     )
 
-    body = draft.body.strip()
-
-    # Remove placeholder signoff, then append a single signoff only if missing
-    if _find_placeholder_signoff_block(body):
-        body = _remove_trailing_placeholder_block(body)
-
-    if not _has_signoff_near_end(body):
-        signoff_block = _compose_signoff_block(tone_contract, profile)
-        body = body.rstrip() + "\n\n" + signoff_block
+    # Enforce one and only one sign-off/signature block (testable utility)
+    body = enforce_single_signoff(draft.body, tone_contract, profile)
 
     trace = state.get("trace", [])
     attempt = state.get("retries", 0) + 1
     trace.append(f"✅ DraftWriter: produced draft (attempt {attempt})")
 
-    subject_options = [s.strip() for s in (draft.subject_options or []) if s.strip()]
-    if draft.subject.strip() and draft.subject.strip() not in subject_options:
-        subject_options = [draft.subject.strip()] + subject_options
-    subject_options = subject_options[:3]  # keep it tidy
+    # Keep subject options tidy (max 3)
+    subject_options = [s.strip() for s in (draft.subject_options or []) if s and s.strip()]
+    subject = (draft.subject or "").strip()
+    if subject and subject not in subject_options:
+        subject_options = [subject] + subject_options
+    subject_options = subject_options[:3]
 
-    # Save history
+    # Save history (for UI attempts panel)
     draft_history = state.get("draft_history", [])
     draft_history.append(
         {
             "attempt": attempt,
-            "subject": draft.subject.strip(),
+            "subject": subject,
             "subject_options": subject_options,
             "body": body,
             "assumptions_used": draft.assumptions_used,
@@ -203,7 +108,7 @@ def draft_writer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "trace": trace,
         "draft_history": draft_history,
         "draft": {
-            "subject": draft.subject.strip(),
+            "subject": subject,
             "subject_options": subject_options,
             "body": body,
             "assumptions_used": draft.assumptions_used,
