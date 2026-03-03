@@ -1,38 +1,25 @@
-"""
-MailForgeAI Streamlit App for Hugging Face Spaces Deployment
-Optimized for HF Spaces environment with pathlib.Path usage
-"""
-
 import sys
 from pathlib import Path
-
-# Add project root to path
-PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
 from typing import Dict, Any
 
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from src.workflow.langgraph_flow import run_email_assistant
 from src.memory.memory_store import update_profile_from_edits
-from src.utils.path_utils import PATHS
 
-st.set_page_config(
-    page_title="MailForge AI",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="MailForge AI", layout="wide")
 
 
 def render_trace(trace):
-    """Render the agent execution trace."""
     st.markdown("### 🔍 Agent Trace")
     for step in trace:
         st.write(step)
 
 
 def render_review(review: Dict[str, Any]):
-    """Render the review report."""
     if not review:
         return
     st.markdown("### 🧪 Review Report")
@@ -47,11 +34,11 @@ def render_review(review: Dict[str, Any]):
 
 
 def render_history(draft_history, review_history):
-    """Render the draft and review history."""
     if not draft_history:
         return
 
     st.markdown("### 🧭 Attempts (Draft + Review)")
+    # Map attempt -> review
     review_by_attempt = {r.get("attempt"): r for r in (review_history or [])}
 
     for d in draft_history:
@@ -60,131 +47,172 @@ def render_history(draft_history, review_history):
             st.write("**Subject:**", d.get("subject"))
             opts = d.get("subject_options") or []
             if opts:
-                st.markdown("**Subject options:**")
-                for opt in opts:
-                    st.write(f"- {opt}")
-            st.write("**Body:**")
-            st.write(d.get("body", ""))
+                st.write("**Subject options:**")
+                for o in opts:
+                    st.write(f"- {o}")
+            st.text_area("Draft body", value=d.get("body", ""), height=220, key=f"hist_body_{attempt}")
 
             r = review_by_attempt.get(attempt)
             if r:
-                st.markdown("**Review feedback:**")
-                st.write(f"- Verdict: {r.get('verdict')}")
-                st.write(f"- Score: {r.get('tone_alignment_score')}")
-                if r.get("issues"):
-                    st.write(f"- Issues: {', '.join(r['issues'])}")
+                st.markdown("---")
+                st.write(f"**Review Verdict:** {r.get('verdict')}")
+                st.write(f"**Tone Score:** {r.get('tone_alignment_score')}")
+                st.write(f"**Structure OK:** {r.get('structure_ok')}")
+                issues = r.get("issues", [])
+                if issues:
+                    st.write("**Issues:**")
+                    for issue in issues:
+                        st.write(f"- {issue}")
 
 
-def main():
-    """Main app logic."""
-    st.title("✉️ MailForgeAI - AI Email Assistant")
-    st.markdown(
-        """
-        Generate professional, personalized emails using AI-powered agents.
-        """
+st.title("📧 MailForge AI — Multi-Agent Email Assistant")
+
+# Session state for clarification loop
+if "last_prompt" not in st.session_state:
+    st.session_state["last_prompt"] = ""
+if "last_state" not in st.session_state:
+    st.session_state["last_state"] = None
+
+with st.sidebar:
+    st.header("⚙️ Controls")
+
+    tone_mode = st.selectbox("Tone", ["formal", "casual", "assertive"], index=0)
+
+    intent_override = st.selectbox(
+        "Intent Override (optional)",
+        ["", "outreach", "follow_up", "apology", "status_update", "meeting_request", "escalation", "thank_you"],
     )
 
-    # Sidebar for configuration
-    with st.sidebar:
-        st.markdown("### ⚙️ Configuration")
-        user_id = st.text_input("User ID", value="user_001", help="Your unique identifier")
-        tone_mode = st.selectbox(
-            "Tone Mode",
-            ["formal", "casual", "assertive"],
-            help="Choose the email tone",
-        )
-        max_retries = st.slider("Max Retries", 1, 5, 2, help="Maximum revision attempts")
-
-    # Main input area
-    st.markdown("### 📝 Email Details")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        user_prompt = st.text_area(
-            "What email do you want to write?",
-            placeholder="e.g., Send a meeting request to John about Q1 planning",
-            height=100,
-        )
-
-    with col2:
-        recipient_name = st.text_input("Recipient Name", placeholder="John")
-        recipient_company = st.text_input("Recipient Company", placeholder="Acme Corp")
-        relationship = st.selectbox(
-            "Relationship",
-            ["colleague", "manager", "client", "vendor", "friend"],
-        )
-        deadline = st.text_input("Deadline (optional)", placeholder="Tomorrow, end of day")
-
-    # Generate button
-    if st.button("✨ Generate Email", use_container_width=True, type="primary"):
-        if not user_prompt:
-            st.warning("Please enter what email you want to write")
-        else:
-            with st.spinner("🔄 Generating your email..."):
-                try:
-                    metadata = {
-                        "recipient_name": recipient_name or "there",
-                        "recipient_company": recipient_company or "",
-                        "relationship": relationship,
-                        "deadline": deadline or "",
-                    }
-
-                    result = run_email_assistant(
-                        user_prompt=user_prompt,
-                        tone_mode=tone_mode,
-                        user_id=user_id,
-                        metadata=metadata,
-                        max_retries=max_retries,
-                    )
-
-                    # Display results
-                    st.success("✅ Email generated successfully!")
-
-                    # Final email
-                    st.markdown("### 📧 Final Email")
-                    final_output = result.get("final_output", "")
-                    st.markdown(f"```\n{final_output}\n```")
-
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.download_button(
-                            label="⬇️ Download as Text",
-                            data=final_output,
-                            file_name="email.txt",
-                            mime="text/plain",
-                        )
-                    with col2:
-                        st.button("📋 Copy to Clipboard")
-
-                    # Additional sections
-                    if st.checkbox("🔍 Show Agent Trace", value=False):
-                        render_trace(result.get("trace", []))
-
-                    if st.checkbox("🧪 Show Review Details", value=False):
-                        render_review(result.get("review", {}))
-
-                    if st.checkbox("📊 Show Generation History", value=False):
-                        render_history(
-                            result.get("draft_history", []),
-                            result.get("review_history", []),
-                        )
-
-                except Exception as e:
-                    st.error(f"❌ Error generating email: {str(e)}")
-                    st.info("Make sure OPENAI_API_KEY is set in your secrets or environment.")
-
-    # Footer
     st.markdown("---")
-    st.markdown(
-        """
-        💡 **Tips:**
-        - Be specific about what you want the email to convey
-        - The AI considers tone, recipient context, and relationship
-        - You can regenerate with different settings
-        - All data paths are configured for cloud deployment
-        """
+    st.subheader("Metadata (optional)")
+    recipient_name = st.text_input("Recipient Name")
+    recipient_org = st.text_input("Recipient Organization")
+    relationship = st.text_input("Relationship (e.g., manager, recruiter, client)")
+    deadline = st.text_input("Deadline (optional)")
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("✍️ Your Prompt")
+    user_prompt = st.text_area(
+        "Describe the email you want to write:",
+        height=200,
+        placeholder="Example: Write a follow-up email to a recruiter after yesterday's interview..."
+    )
+    generate = st.button("🚀 Generate Email")
+
+with col2:
+    st.subheader("📌 Quick Tips")
+    st.write("- Include who the recipient is and what you want them to do")
+    st.write("- Add deadline if relevant")
+    st.write("- For follow-ups: specify what you want them to review/confirm")
+
+# ---------- Execution ----------
+def run_workflow(prompt_text: str):
+    metadata = {
+        "recipient_name": recipient_name,
+        "recipient_org": recipient_org,
+        "relationship": relationship,
+        "deadline": deadline,
+    }
+
+    return run_email_assistant(
+        user_prompt=prompt_text,
+        tone_mode=tone_mode,
+        intent_override=intent_override if intent_override else None,
+        metadata=metadata,
+        user_id="default",
+        max_retries=1,
     )
 
+if generate and user_prompt.strip():
+    with st.spinner("Running multi-agent workflow..."):
+        state = run_workflow(user_prompt.strip())
 
-if __name__ == "__main__":
-    main()
+    st.session_state["last_prompt"] = user_prompt.strip()
+    st.session_state["last_state"] = state
+
+# If we have a prior run, show it
+state = st.session_state.get("last_state")
+
+if state:
+    with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
+        templates = state.get("retrieved_templates", [])
+        if not templates:
+            st.write("No templates retrieved.")
+        else:
+            for t in templates:
+                st.write(f"**{t.get('source')}**")
+                st.code((t.get("content", "") or "")[:800])
+else:
+    with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
+        st.write("Run a prompt to retrieve templates.")
+
+if state:
+    st.markdown("---")
+
+    # Clarification loop (Option A)
+    if state.get("router", {}).get("next_step") == "ask_user":
+        st.warning("⚠️ Clarification Needed")
+        st.write(state.get("clarification_question"))
+
+        clarification = st.text_input("Your answer (we'll use it to draft):", key="clarification_answer")
+        if st.button("✅ Apply clarification and rerun"):
+            combined = st.session_state["last_prompt"] + "\n\nUser clarification: " + clarification.strip()
+            with st.spinner("Re-running with clarification..."):
+                new_state = run_workflow(combined)
+            st.session_state["last_prompt"] = combined
+            st.session_state["last_state"] = new_state
+            st.rerun()
+
+    else:
+        st.subheader("📨 Generated Email")
+
+        draft = state.get("draft") or {}
+        subject_options = draft.get("subject_options") or []
+        chosen_subject = None
+
+        if subject_options:
+            chosen_subject = st.radio("Choose a subject:", subject_options, index=0)
+        else:
+            chosen_subject = draft.get("subject") or ""
+
+        final_body = (draft.get("body") or "").strip()
+        final_output = f"Subject: {chosen_subject}\n\n{final_body}".strip()
+
+        edited_output = st.text_area("Edit before sending:", value=final_output, height=320)
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            if st.button("💾 Save my edits (learn my style)"):
+                new_profile = update_profile_from_edits(
+                    user_id="default",
+                    generated=final_output,
+                    edited=edited_output,
+                )
+                st.success("Saved! Next drafts will better match your style.")
+                st.caption(f"Learned prefs: {new_profile.get('style_preferences')}")
+
+        with c2:
+            st.download_button(
+                label="⬇️ Download as .txt",
+                data=edited_output,
+                file_name="mailforge_email.txt",
+                mime="text/plain",
+            )
+
+        with c3:
+            # Streamlit doesn't provide universal clipboard copy reliably across browsers.
+            st.caption("Tip: Select text and Ctrl/Cmd+C to copy.")
+
+        st.markdown("---")
+
+        # Show retry history
+        render_history(state.get("draft_history", []), state.get("review_history", []))
+
+        # Show latest review
+        render_review(state.get("review") or {})
+
+    st.markdown("---")
+    render_trace(state.get("trace", []))
