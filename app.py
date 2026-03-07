@@ -1,5 +1,12 @@
 import sys
+import os
 from pathlib import Path
+
+# **IMPORTANT**: Load environment BEFORE importing project modules
+# This ensures OPENAI_API_KEY is available for Hugging Face Spaces
+from dotenv import load_dotenv
+if not os.getenv("OPENAI_API_KEY"):
+    load_dotenv(override=False)
 
 import streamlit as st
 from typing import Dict, Any

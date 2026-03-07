@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field
 
 from src.integrations.openai_client import get_llm
+from src.mcp.mcp_server import mcp
 
 
 class ReviewResult(BaseModel):
@@ -14,7 +15,7 @@ class ReviewResult(BaseModel):
     structure_ok: bool
 
 
-SYSTEM =  """You are a strict but fair email reviewer.
+SYSTEM = """You are a strict but fair email reviewer.
 
 Evaluate the draft for:
 1) Tone adherence to tone_contract
@@ -28,23 +29,26 @@ Intent-specific CTA rules:
 
 Tone rules (important):
 - Do NOT fail an email simply because it is warm, appreciative, or uses gratitude language.
-  Gratitude phrases like 'thank you', 'sincere gratitude', 'I appreciate', 'grateful' are professional.
-- Only mark tone as FAIL if it contains clearly casual/unprofessional elements for the chosen tone:
-  slang, emojis, overly chatty language, excessive exclamation, or very informal sign-offs in formal tone.
-- If tone is slightly off but still professional, prefer PASS unless it violates explicit contract taboo phrases.
+- Only mark tone as FAIL if it contains clearly casual/unprofessional elements.
+- If tone is slightly off but still professional, prefer PASS.
 
 If issues exist, provide clear bullet issues and set verdict=fail.
 """
 
 
 def review_node(state: Dict[str, Any]) -> Dict[str, Any]:
+
     llm = get_llm(temperature=0.0)
 
     draft = state.get("draft") or {}
     parsed = state.get("parsed_request") or {}
     metadata = state.get("metadata") or {}
     tone_contract = state.get("tone_contract") or {}
-    intent = state.get("intent") or {}
+    intent_obj = state.get("intent") or {}
+
+    intent = intent_obj.get("intent")
+
+    draft_body = draft.get("body", "")
 
     model = llm.with_structured_output(ReviewResult)
 
@@ -53,21 +57,79 @@ def review_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "parsed_request": parsed,
         "metadata": metadata,
         "tone_contract": tone_contract,
-        "intent": intent,
+        "intent": intent_obj,
     }
 
+    # ---------------------------
+    # LLM Review
+    # ---------------------------
     review: ReviewResult = model.invoke(
         [
             ("system", SYSTEM),
             ("user", f"Review this email draft:\n{payload}"),
         ]
     )
+
+    issues = list(review.issues)
+
+    # ---------------------------
+    # MCP Policy Validation
+    # ---------------------------
+    try:
+
+        policy_result = mcp.call(
+            "policy.check",
+            {
+                "email_text": draft_body,
+                "intent": intent,
+            },
+        )
+
+        if not policy_result.get("pass", True):
+
+            issues.extend(policy_result.get("issues", []))
+
+    except Exception:
+        # MCP failure should not break review
+        pass
+
+    # ---------------------------
+    # Final Verdict Adjustment
+    # ---------------------------
+    final_verdict = review.verdict
+
+    if issues:
+        final_verdict = "fail"
+
+    # ---------------------------
+    # Trace + History
+    # ---------------------------
     attempt = state.get("retries", 0) + 1
 
     trace = state.get("trace", [])
-    trace.append(f"✅ Review: {review.verdict.upper()} (tone_score={review.tone_alignment_score:.2f})")
+    trace.append(
+        f"✅ Review: {final_verdict.upper()} (tone_score={review.tone_alignment_score:.2f})"
+    )
 
     review_history = state.get("review_history", [])
-    review_history.append({"attempt": attempt, **review.model_dump()})
 
-    return {"trace": trace, "review": review.model_dump(), "review_history": review_history}
+    review_history.append(
+        {
+            "attempt": attempt,
+            "verdict": final_verdict,
+            "issues": issues,
+            "tone_alignment_score": review.tone_alignment_score,
+            "structure_ok": review.structure_ok,
+        }
+    )
+
+    return {
+        "trace": trace,
+        "review": {
+            "verdict": final_verdict,
+            "issues": issues,
+            "tone_alignment_score": review.tone_alignment_score,
+            "structure_ok": review.structure_ok,
+        },
+        "review_history": review_history,
+    }
