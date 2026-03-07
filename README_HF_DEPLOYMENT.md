@@ -225,6 +225,30 @@ streamlit run app.py
 
 ---
 
+## 📊 Visualizing the Workflow
+
+MailForgeAI includes a script to visualize the LangGraph workflow:
+
+```bash
+# Generate workflow diagram as PNG
+python visualize_langgraph_workflow.py
+```
+
+This creates `workflow_diagram.png` showing:
+- All workflow nodes (input_parser, intent_detection, tone_stylist, etc.)
+- Connections and data flow between agents
+- Routing decisions and conditional edges
+
+**In Jupyter Notebooks:**
+```python
+from visualize_langgraph_workflow import display_workflow
+
+# Display workflow inline in notebook
+display_workflow()
+```
+
+---
+
 ## 💡 Path Handling Details
 
 ### How pathlib.Path Helps in HF Spaces
@@ -248,6 +272,40 @@ TEMPLATE_DIR = get_templates_dir()  # Automatically creates if missing!
 - ✅ Environment variable override support
 - ✅ Type-safe Path objects
 - ✅ Cleaner, more readable code
+
+---
+
+## 📁 Generated Files
+
+After running the application, the following files may be created:
+
+| File | Purpose | Auto-Created |
+|------|---------|--------------|
+| `workflow_diagram.png` | Visual representation of LangGraph workflow | Via `visualize_langgraph_workflow.py` |
+| `data/chroma_templates/` | Vector store for template embeddings | ✅ Yes |
+| `output/` | Generated emails and artifacts | ✅ Yes |
+
+---
+
+## 🆘 Troubleshooting
+
+### Issue: `ImportError: No module named 'langgraph'`
+**Solution:**
+```bash
+pip install -r requirements.txt --upgrade
+```
+
+### Issue: Paths not found in HF Spaces
+**Solution:** The `path_utils.py` handles this automatically. Ensure all file operations use the utility functions rather than direct `os.path`.
+
+### Issue: OpenAI API errors
+**Check:**
+1. API key is correctly set in HF Space secrets
+2. API key has proper permissions at https://platform.openai.com/account/api-keys
+3. Account has available credits/quota
+
+### Issue: Templates not loading
+**Solution:** Ensure `data/kb/templates/` directory exists with `.md` template files.
 
 ---
 
