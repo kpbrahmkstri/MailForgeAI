@@ -145,8 +145,9 @@ if state:
                 st.write(f"**{t.get('source')}**")
                 st.code((t.get("content", "") or "")[:800])
 else:
-    with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
-        st.write("Run a prompt to retrieve templates.")
+    if state and state.get("router", {}).get("next_step") != "ask_user":
+        with st.expander("📚 Retrieved Templates (RAG)", expanded=False):
+            st.write("Run a prompt to retrieve templates.")
 
 if state:
     st.markdown("---")
